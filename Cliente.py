@@ -1,41 +1,60 @@
-# -*- coding: latin-1 -*-
 import socket
 import threading
+import sys
+
+recibiendo = True
 
 def recibir_mensajes(cliente_socket):
-    """Este hilo solo se encarga de escuchar lo que llega del servidor e imprimirlo."""
-    while True:
+    """Hilo para escuchar mensajes del servidor."""
+    global recibiendo
+    while recibiendo:
         try:
             mensaje = cliente_socket.recv(1024).decode('utf-8')
             if not mensaje:
                 break
             print(mensaje)
-        except:
-            print("Desconectado del servidor.")
-            cliente_socket.close()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            print("\n[!] Desconectado del servidor.")
             break
+    recibiendo = False
+    try:
+        cliente_socket.close()
+    except:
+        pass
 
-def iniciar_cliente():
-    host = 'localhost'
-    puerto = 12345
-    
+def iniciar_cliente(host='localhost', puerto=12345):
     cliente_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
     try:
         cliente_socket.connect((host, puerto))
-        print("Conectado al chat. °Ya puedes escribir!")
-        
-        # Iniciamos un hilo en el fondo para RECIBIR mensajes simult·neamente
-        hilo_lectura = threading.Thread(target=recibir_mensajes, args=(cliente_socket,))
-        hilo_lectura.start()
-        
-        # El hilo principal se encarga de ENVIAR mensajes (leer tu teclado)
-        while True:
+        print("Conectado al chat. Escribe '/salir' para terminar.")
+    except ConnectionRefusedError:
+        print("No se pudo conectar al servidor.")
+        sys.exit(1)
+
+    # Hilo de recepci√≥n
+    hilo_lectura = threading.Thread(target=recibir_mensajes, args=(cliente_socket,))
+    hilo_lectura.daemon = True
+    hilo_lectura.start()
+
+    # Hilo principal: enviar mensajes
+    global recibiendo
+    while recibiendo:
+        try:
             mensaje = input()
+            if mensaje.lower() == "/salir":
+                recibiendo = False
+                break
             cliente_socket.send(mensaje.encode('utf-8'))
-            
-    except Exception as e:
-        print(f"Error al conectar con el servidor: {e}")
+        except (BrokenPipeError, OSError):
+            print("Conexi√≥n perdida.")
+            break
+        except KeyboardInterrupt:
+            break
+
+    print("Cerrando conexi√≥n...")
+    cliente_socket.close()
+    sys.exit(0)
 
 if __name__ == "__main__":
     iniciar_cliente()
+    
